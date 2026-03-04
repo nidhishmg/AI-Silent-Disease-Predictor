@@ -1,23 +1,26 @@
 """
 train_model.py — Model training pipeline for AI Silent Disease Predictor.
 
-Generates synthetic medically-informed training data for the 9-feature
-biomarker schema, trains a RandomForestClassifier, and saves:
+Trains a RandomForestClassifier on **real clinical datasets** with optional
+synthetic augmentation, and saves:
     • models/health_model.pkl
     • models/scaler.pkl
 
-Run once before launching the application::
+Usage::
 
+    # 1. Download real datasets (one-time)
+    python data/download_datasets.py
+
+    # 2. Train
     python train_model.py
 
-Dataset References (for future real-data integration)
------------------------------------------------------
-- UCI Heart Disease:  https://archive.ics.uci.edu/ml/datasets/heart+disease
-- PIMA Diabetes:      https://www.kaggle.com/datasets/uciml/pima-indians-diabetes-database
+Integrated Datasets
+-------------------
+- UCI Heart Disease  (303 records)  — cardiovascular clinical attributes
+- PIMA Diabetes      (768 records)  — metabolic / demographic attributes
 
-The synthetic data uses medically-informed correlation rules inspired by
-these datasets to produce a realistic mapping from facial / vocal
-biomarkers to health risk labels.
+If dataset files are not found, the pipeline falls back to synthetic data
+and prints a warning.
 """
 
 from __future__ import annotations
@@ -29,8 +32,8 @@ import joblib
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report
-from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report, accuracy_score
+from sklearn.model_selection import train_test_split, cross_val_score
 from sklearn.preprocessing import StandardScaler
 
 # ---------------------------------------------------------------------------
@@ -48,17 +51,19 @@ from config.settings import (
     RF_MAX_DEPTH,
     RF_N_ESTIMATORS,
     SCALER_PATH,
+    SYNTHETIC_AUGMENT,
     TEST_SPLIT,
     TRAINING_SAMPLES,
     TRAINING_SEED,
 )
+from data.data_loader import load_real_datasets
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
 
 # ==============================================================================
-# Synthetic data generation
+# Synthetic data generation (fallback + augmentation)
 # ==============================================================================
 
 def generate_synthetic_data(
@@ -67,19 +72,16 @@ def generate_synthetic_data(
 ) -> pd.DataFrame:
     """Generate medically-informed synthetic biomarker data.
 
-    Correlation rules (medical logic):
-    - High fatigue + high voice stress → likely risk=1
-    - High symmetry + stable pitch → likely risk=0
-    - Brightness variance (stress proxy) contributes additively
-    - Breathing irregularity correlates with respiratory/cardiac risk
-    - Composite risk scores are correlated with individual markers
+    Used as:
+        - **Fallback** when no real datasets are available
+        - **Augmentation** alongside real data for larger training set
     """
     rng = np.random.default_rng(seed)
-    logger.info("Generating %d synthetic training samples (seed=%d)", n_samples, seed)
+    logger.info("Generating %d synthetic samples (seed=%d)", n_samples, seed)
 
     # ------- Base feature distributions ------- #
-    face_fatigue = rng.beta(2, 5, n_samples)          # skewed low (most people healthy)
-    symmetry_score = rng.beta(8, 2, n_samples)         # skewed high (most faces symmetric)
+    face_fatigue = rng.beta(2, 5, n_samples)
+    symmetry_score = rng.beta(8, 2, n_samples)
     blink_instability = rng.beta(2, 6, n_samples)
     brightness_variance = rng.beta(2, 5, n_samples)
 
@@ -87,7 +89,7 @@ def generate_synthetic_data(
     breathing_score = rng.beta(2, 5, n_samples)
     pitch_instability = rng.beta(2, 6, n_samples)
 
-    # Composite scores (must correlate with components)
+    # Composite scores
     face_risk_score = (
         0.3 * face_fatigue
         + 0.3 * (1.0 - symmetry_score)
@@ -103,8 +105,7 @@ def generate_synthetic_data(
     ) * 100 + rng.normal(0, 3, n_samples)
     voice_risk_score = np.clip(voice_risk_score, 0, 100)
 
-    # ------- Health risk label ------- #
-    # Probability of risk=1 is a sigmoid of combined risk factors
+    # Health risk label via sigmoid
     risk_linear = (
         1.5 * face_fatigue
         + 1.2 * voice_stress
@@ -115,31 +116,79 @@ def generate_synthetic_data(
         - 1.0 * symmetry_score
         + 0.01 * face_risk_score
         + 0.01 * voice_risk_score
-        + rng.normal(0, 0.3, n_samples)   # noise
+        + rng.normal(0, 0.3, n_samples)
     )
     risk_prob = 1.0 / (1.0 + np.exp(-2.0 * (risk_linear - 1.5)))
     health_risk = (rng.random(n_samples) < risk_prob).astype(int)
 
-    logger.info(
-        "Label distribution — risk=0: %d,  risk=1: %d",
-        int(np.sum(health_risk == 0)),
-        int(np.sum(health_risk == 1)),
-    )
+    return pd.DataFrame({
+        "face_fatigue": face_fatigue,
+        "symmetry_score": symmetry_score,
+        "blink_instability": blink_instability,
+        "brightness_variance": brightness_variance,
+        "voice_stress": voice_stress,
+        "breathing_score": breathing_score,
+        "pitch_instability": pitch_instability,
+        "face_risk_score": face_risk_score,
+        "voice_risk_score": voice_risk_score,
+        "health_risk": health_risk,
+    })
 
-    df = pd.DataFrame(
-        {
-            "face_fatigue": face_fatigue,
-            "symmetry_score": symmetry_score,
-            "blink_instability": blink_instability,
-            "brightness_variance": brightness_variance,
-            "voice_stress": voice_stress,
-            "breathing_score": breathing_score,
-            "pitch_instability": pitch_instability,
-            "face_risk_score": face_risk_score,
-            "voice_risk_score": voice_risk_score,
-            "health_risk": health_risk,
-        }
-    )
+
+# ==============================================================================
+# Data assembly: real + synthetic
+# ==============================================================================
+
+def assemble_training_data(seed: int = TRAINING_SEED) -> pd.DataFrame:
+    """Load real datasets and optionally augment with synthetic samples.
+
+    Priority:
+        1. Real clinical data (UCI Heart Disease + PIMA Diabetes)
+        2. Synthetic augmentation to reach target sample count
+        3. Full synthetic fallback if no real data available
+    """
+    print("\n" + "=" * 60)
+    print("  DATA ASSEMBLY")
+    print("=" * 60)
+
+    real_df = load_real_datasets(seed)
+
+    if real_df is not None:
+        # Drop internal _source column
+        if "_source" in real_df.columns:
+            real_df = real_df.drop(columns=["_source"])
+
+        n_real = len(real_df)
+        print(f"\n  ✓ Loaded {n_real} real clinical records")
+
+        # Augment with synthetic data
+        n_augment = max(SYNTHETIC_AUGMENT, 0)
+        if n_augment > 0:
+            print(f"  + Generating {n_augment} synthetic augmentation samples")
+            synth_df = generate_synthetic_data(n_samples=n_augment, seed=seed + 100)
+            df = pd.concat([real_df, synth_df], ignore_index=True)
+        else:
+            df = real_df
+
+        # Shuffle
+        df = df.sample(frac=1.0, random_state=seed).reset_index(drop=True)
+
+        n_total = len(df)
+        real_pct = n_real / n_total * 100
+        print(f"\n  Total training samples: {n_total}")
+        print(f"  Real data:     {n_real} ({real_pct:.1f}%)")
+        print(f"  Synthetic:     {n_total - n_real} ({100 - real_pct:.1f}%)")
+
+    else:
+        print("\n  ⚠  No real datasets found — using synthetic data only")
+        print("     Run:  python data/download_datasets.py")
+        df = generate_synthetic_data(n_samples=TRAINING_SAMPLES, seed=seed)
+
+    n_risk0 = int((df["health_risk"] == 0).sum())
+    n_risk1 = int((df["health_risk"] == 1).sum())
+    logger.info("Final dataset — total: %d, risk=0: %d, risk=1: %d", len(df), n_risk0, n_risk1)
+    print(f"  Label dist:    risk=0: {n_risk0},  risk=1: {n_risk1}")
+
     return df
 
 
@@ -148,13 +197,17 @@ def generate_synthetic_data(
 # ==============================================================================
 
 def train_and_save() -> None:
-    """Complete training pipeline: generate data → train → evaluate → save."""
+    """Complete training pipeline: load data → train → evaluate → save."""
     logger.info("=" * 60)
     logger.info("AI Silent Disease Predictor — Model Training v%s", MODEL_VERSION)
     logger.info("=" * 60)
 
-    # 1. Generate data
-    df = generate_synthetic_data()
+    print("\n" + "=" * 60)
+    print(f"  AI Silent Disease Predictor — Training Pipeline v{MODEL_VERSION}")
+    print("=" * 60)
+
+    # 1. Assemble data
+    df = assemble_training_data()
 
     X = df[FEATURE_NAMES].values
     y = df["health_risk"].values
@@ -163,9 +216,8 @@ def train_and_save() -> None:
     X_train, X_test, y_train, y_test = train_test_split(
         X, y, test_size=TEST_SPLIT, random_state=TRAINING_SEED, stratify=y  # type: ignore
     )
-    logger.info(
-        "Split — train: %d,  test: %d", len(X_train), len(X_test)
-    )
+    logger.info("Split — train: %d,  test: %d", len(X_train), len(X_test))
+    print(f"\n  Train: {len(X_train)} samples,  Test: {len(X_test)} samples")
 
     # 3. Fit scaler
     scaler = StandardScaler()
@@ -173,6 +225,7 @@ def train_and_save() -> None:
     X_test_scaled = scaler.transform(X_test)
 
     # 4. Train classifier
+    print("\n  Training RandomForest ...")
     model = RandomForestClassifier(
         n_estimators=RF_N_ESTIMATORS,
         max_depth=RF_MAX_DEPTH,
@@ -182,18 +235,25 @@ def train_and_save() -> None:
     )
     model.fit(X_train_scaled, y_train)
 
-    # 5. Evaluate
+    # 5. Cross-validation
+    cv_scores = cross_val_score(model, X_train_scaled, y_train, cv=5, scoring="accuracy")
+    print(f"  5-fold CV accuracy: {cv_scores.mean():.4f} (±{cv_scores.std():.4f})")
+    logger.info("CV accuracy: %.4f ± %.4f", cv_scores.mean(), cv_scores.std())
+
+    # 6. Test evaluation
     y_pred = model.predict(X_test_scaled)
+    acc = accuracy_score(y_test, y_pred)
     report: str = classification_report(  # type: ignore
         y_test, y_pred, target_names=["Low Risk", "High Risk"]
     )
     logger.info("\nClassification Report:\n%s", report)
+    print(f"\n  Test Accuracy: {acc:.4f}  ({acc * 100:.1f}%)")
     print("\n" + report)
 
-    # 6. Feature importances
+    # 7. Feature importances
     importances = model.feature_importances_
-    print("\nFeature Importances:")
-    print("-" * 40)
+    print("Feature Importances:")
+    print("-" * 50)
     for fname, imp in sorted(
         zip(FEATURE_NAMES, importances), key=lambda x: x[1], reverse=True
     ):
@@ -201,7 +261,7 @@ def train_and_save() -> None:
         print(f"  {fname:<22s} {imp:.4f}  {bar}")
         logger.info("Feature importance: %s = %.4f", fname, imp)
 
-    # 7. Save artefacts
+    # 8. Save artefacts
     os.makedirs(MODEL_DIR, exist_ok=True)
     joblib.dump(model, MODEL_PATH)
     joblib.dump(scaler, SCALER_PATH)
@@ -210,7 +270,7 @@ def train_and_save() -> None:
     print(f"\n✓ Model saved to {MODEL_PATH}")
     print(f"✓ Scaler saved to {SCALER_PATH}")
 
-    # 8. Validate saved artefacts
+    # 9. Validate saved artefacts
     loaded_model = joblib.load(MODEL_PATH)
     loaded_scaler = joblib.load(SCALER_PATH)
     test_input = X_test[:1]
@@ -218,6 +278,14 @@ def train_and_save() -> None:
     proba = loaded_model.predict_proba(test_scaled)
     print(f"✓ Validation — sample predict_proba: {proba[0]}")
     logger.info("Validation passed. Model is ready.")
+
+    # 10. Summary
+    print("\n" + "=" * 60)
+    print(f"  TRAINING COMPLETE")
+    print(f"  Accuracy:  {acc * 100:.1f}%")
+    print(f"  CV Mean:   {cv_scores.mean() * 100:.1f}%")
+    print(f"  Samples:   {len(df)}")
+    print("=" * 60)
 
 
 # ==============================================================================

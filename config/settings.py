@@ -33,6 +33,10 @@ LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
 DATA_DIR = os.path.join(BASE_DIR, "data", "datasets")
 
+# Dataset file paths
+HEART_CSV = os.path.join(DATA_DIR, "heart.csv")
+DIABETES_CSV = os.path.join(DATA_DIR, "diabetes.csv")
+
 # ==============================================================================
 # FEATURE SCHEMA (strict ordering — must match train_model.py)
 # ==============================================================================
@@ -128,10 +132,11 @@ PERSIST_DATA = False  # Never persist patient data to disk
 # ==============================================================================
 # TRAINING CONFIGURATION
 # ==============================================================================
-TRAINING_SAMPLES = int(os.environ.get("TRAINING_SAMPLES", 3000))
+TRAINING_SAMPLES = int(os.environ.get("TRAINING_SAMPLES", 5000))
+SYNTHETIC_AUGMENT = int(os.environ.get("SYNTHETIC_AUGMENT", 500))  # synthetic augmentation samples
 TRAINING_SEED = int(os.environ.get("TRAINING_SEED", 42))
-RF_N_ESTIMATORS = int(os.environ.get("RF_N_ESTIMATORS", 200))
-RF_MAX_DEPTH = int(os.environ.get("RF_MAX_DEPTH", 10))
+RF_N_ESTIMATORS = int(os.environ.get("RF_N_ESTIMATORS", 500))
+RF_MAX_DEPTH = int(os.environ.get("RF_MAX_DEPTH", 15))
 TEST_SPLIT = float(os.environ.get("TEST_SPLIT", 0.2))
 
 # ==============================================================================
