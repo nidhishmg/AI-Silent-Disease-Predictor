@@ -1,0 +1,436 @@
+You are a senior frontend engineer and UI/UX architect who designs production-grade SaaS interfaces.
+
+Your task is to build a premium, modern Streamlit UI for an AI healthcare application named:
+
+AI Silent Disease Predictor
+
+This UI must feel like a professional product built by a billion-dollar AI healthcare startup.
+
+IMPORTANT RULE:
+You must build ONLY the UI layer.
+
+DO NOT modify backend modules.
+
+Existing backend modules:
+modules/face_analysis.py
+modules/voice_analysis.py
+modules/prediction_engine.py
+
+They already work and return structured data.
+
+Your task is to create a highly polished UI in app.py that guides the user step-by-step through the scanning process.
+
+The focus is the **SCANNING EXPERIENCE**, not the dashboard.
+
+The UI should feel like a futuristic AI health scanner.
+
+-----------------------------------------------------
+
+PROJECT STRUCTURE
+
+AI-Silent-Disease-Predictor/
+
+app.py
+modules/
+face_analysis.py
+voice_analysis.py
+prediction_engine.py
+utils/
+config/settings.py
+models/
+train_model.py
+
+Modify only app.py.
+
+-----------------------------------------------------
+
+DESIGN PHILOSOPHY
+
+The UI must look like a premium SaaS product.
+
+Think of products like:
+
+Apple Health
+Tesla UI
+Modern AI startup dashboards
+
+Design characteristics:
+
+clean
+minimal
+animated
+high contrast
+card-based layout
+smooth transitions
+clear guidance
+
+-----------------------------------------------------
+
+COLOR THEME
+
+Primary Blue: #1a73e8
+Accent Blue: #4285f4
+Background: #f6f9fc
+Card background: white
+
+Rounded corners
+Soft shadows
+Glass-style UI where possible
+
+-----------------------------------------------------
+
+PAGE NAVIGATION
+
+Create a top navigation bar with 3 pages.
+
+HOME
+SCAN
+DASHBOARD
+
+Navigation should remain fixed at top.
+
+Use icons in navigation.
+
+-----------------------------------------------------
+
+PAGE 1 — HOME
+
+This is a premium landing page.
+
+Large hero section.
+
+Title:
+
+AI Silent Disease Predictor
+
+Subtitle:
+
+AI-powered preventive healthcare using face and voice biomarker analysis.
+
+Add animated hero element such as:
+
+pulsing brain icon
+AI scanning graphic
+medical waveform animation
+
+-----------------------------------------------------
+
+HOW IT WORKS SECTION
+
+Show 4 large cards horizontally.
+
+STEP 1
+Face Scan
+
+STEP 2
+Voice Scan
+
+STEP 3
+AI Analysis
+
+STEP 4
+Health Insights
+
+Each card should have:
+
+icon
+title
+short description
+hover animation
+
+-----------------------------------------------------
+
+START BUTTON
+
+Add a large call-to-action button:
+
+Start Health Scan
+
+Clicking navigates to SCAN page.
+
+-----------------------------------------------------
+
+SCAN PAGE
+
+This page must feel like a real AI scanner.
+
+Divide page into two major sections.
+
+FACE SCAN
+VOICE SCAN
+
+-----------------------------------------------------
+
+STEP PROGRESS INDICATOR
+
+At the top show a modern progress stepper.
+
+Example:
+
+Step 1 Face Scan
+Step 2 Voice Scan
+Step 3 AI Analysis
+
+Highlight current step.
+
+-----------------------------------------------------
+
+FACE SCAN SECTION
+
+Add a large instruction card above the camera.
+
+Title:
+
+Face Scan Instructions
+
+Instructions:
+
+Keep your face centered in the frame
+Look directly at the camera
+Maintain neutral expression
+Ensure good lighting
+Remove glasses if possible
+
+Display these as bullet points with icons.
+
+-----------------------------------------------------
+
+CAMERA VIEW
+
+Use st.camera_input()
+
+Add a face positioning grid overlay using CSS.
+
+The grid should contain a face outline to guide positioning.
+
+Example shape:
+
+face outline
+vertical alignment lines
+eye level indicator
+
+The grid should look similar to iPhone Face ID guidance.
+
+-----------------------------------------------------
+
+SCAN INDICATORS
+
+Below camera show scanning indicators.
+
+Animated check indicators for:
+
+Eye movement detection
+Facial symmetry analysis
+Fatigue detection
+Skin brightness analysis
+
+Use animated progress bars.
+
+-----------------------------------------------------
+
+CAPTURE OPTIONS
+
+Provide buttons:
+
+Capture Photo
+Record 5s Video
+Upload Photo
+Upload Video
+
+After capture display preview of image.
+
+Then show button:
+
+Continue to Voice Scan
+
+-----------------------------------------------------
+
+VOICE SCAN SECTION
+
+Display instructions card.
+
+Title:
+
+Voice Scan Instructions
+
+Instructions:
+
+Speak clearly
+Maintain normal speaking pace
+Avoid background noise
+Hold microphone close
+
+-----------------------------------------------------
+
+TEXT TO READ
+
+Display highlighted sentence card.
+
+User must read:
+
+"My health is important and I feel calm and steady today.
+I am speaking clearly for my health analysis."
+
+Use large readable typography.
+
+-----------------------------------------------------
+
+VOICE RECORDING
+
+Add record button.
+
+When recording starts:
+
+Display animated waveform visualization.
+
+Show recording timer.
+
+Use pulsing microphone icon.
+
+-----------------------------------------------------
+
+VOICE INPUT OPTIONS
+
+Allow:
+
+Record Voice
+Upload Audio File
+Upload Video File
+
+-----------------------------------------------------
+
+RUN ANALYSIS
+
+After voice capture show large button:
+
+Run AI Health Analysis
+
+-----------------------------------------------------
+
+AI PROCESSING SCREEN
+
+When analysis starts display a processing screen.
+
+Use animated loader.
+
+Cycle messages every 1 second:
+
+Analyzing facial landmarks
+Detecting voice biomarkers
+Extracting breathing signals
+Running AI health model
+Generating health insights
+
+Show progress bar increasing gradually.
+
+-----------------------------------------------------
+
+DASHBOARD PAGE
+
+After processing show results.
+
+-----------------------------------------------------
+
+METRIC CARDS
+
+Display 3 animated cards.
+
+Risk Score
+Confidence Score
+Health Index
+
+Numbers should animate when appearing.
+
+-----------------------------------------------------
+
+RISK VISUALIZATION
+
+Add circular gauge chart using Plotly.
+
+Green zone 0-40
+Yellow zone 40-70
+Red zone 70-100
+
+Large centered gauge.
+
+-----------------------------------------------------
+
+FEATURE CONTRIBUTION
+
+Add horizontal bar chart showing feature importance.
+
+-----------------------------------------------------
+
+AI RECOMMENDATIONS
+
+Create recommendation panel.
+
+Low risk → healthy habits
+Moderate risk → lifestyle advice
+High risk → medical consultation suggestion
+
+-----------------------------------------------------
+
+DIGITAL HEALTH SIMULATION
+
+Add interactive sliders.
+
+Sleep hours
+Exercise frequency
+Smoking status
+
+Display projected health risk.
+
+-----------------------------------------------------
+
+DOWNLOAD REPORT
+
+Add button:
+
+Download Health Report
+
+-----------------------------------------------------
+
+FOOTER
+
+Display:
+
+Model Version
+Privacy Notice
+
+Text:
+
+All biometric data is processed locally.
+No personal data is stored.
+
+-----------------------------------------------------
+
+ANIMATIONS
+
+Add modern UI animations.
+
+Card hover effects
+Scanning animation
+Audio waveform animation
+Progress animations
+Fade-in sections
+
+Inject CSS animations using st.markdown.
+
+-----------------------------------------------------
+
+USER EXPERIENCE
+
+The user must feel guided through:
+
+HOME → SCAN → ANALYSIS → RESULTS
+
+The app should look like a premium AI medical scanning platform.
+
+-----------------------------------------------------
+
+OUTPUT
+
+Generate the full professional Streamlit UI code for app.py.
+
+Do NOT modify backend modules.

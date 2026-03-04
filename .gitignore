@@ -1,4 +1,4 @@
-# ==============================================================================
+﻿# ==============================================================================
 # AI Silent Disease Predictor — .gitignore
 # ==============================================================================
 
@@ -11,11 +11,16 @@ __pycache__/
 dist/
 build/
 *.egg
+api/*.pyc
 
 # Virtual environments
 venv/
 .venv/
 env/
+
+# Node.js / Frontend
+node_modules/
+.local/
 
 # IDE
 .vscode/
@@ -44,3 +49,6 @@ data/datasets/*.csv
 # Misc
 *.bak
 *.tmp
+server/public
+vite.config.ts.*
+*.tar.gz
