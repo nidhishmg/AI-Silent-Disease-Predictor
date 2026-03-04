@@ -133,7 +133,7 @@ PERSIST_DATA = False  # Never persist patient data to disk
 # TRAINING CONFIGURATION
 # ==============================================================================
 TRAINING_SAMPLES = int(os.environ.get("TRAINING_SAMPLES", 5000))
-SYNTHETIC_AUGMENT = int(os.environ.get("SYNTHETIC_AUGMENT", 500))  # synthetic augmentation samples
+SYNTHETIC_AUGMENT = int(os.environ.get("SYNTHETIC_AUGMENT", 0))  # 0 = real data only (SMOTE handles balance)
 TRAINING_SEED = int(os.environ.get("TRAINING_SEED", 42))
 RF_N_ESTIMATORS = int(os.environ.get("RF_N_ESTIMATORS", 500))
 RF_MAX_DEPTH = int(os.environ.get("RF_MAX_DEPTH", 15))

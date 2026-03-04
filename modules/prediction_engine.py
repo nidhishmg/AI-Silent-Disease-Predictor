@@ -30,6 +30,7 @@ from config.settings import (
     DRIFT_Z_THRESHOLD,
     FEATURE_NAMES,
     LOW_THRESHOLD,
+    MODEL_DIR,
     MODEL_PATH,
     MODEL_VERSION,
     MODERATE_THRESHOLD,
@@ -53,6 +54,7 @@ class _ModelCache:
     def __init__(self) -> None:
         self.model: Any = None
         self.scaler: Any = None
+        self.poly: Any = None  # PolynomialFeatures transformer (optional)
         self.loaded: bool = False
 
     def load(self) -> bool:
@@ -68,6 +70,11 @@ class _ModelCache:
         try:
             self.model = joblib.load(MODEL_PATH)
             self.scaler = joblib.load(SCALER_PATH)
+            # Optional poly transformer (for polynomial feature models)
+            poly_path = os.path.join(MODEL_DIR, "poly.pkl")
+            if os.path.isfile(poly_path):
+                self.poly = joblib.load(poly_path)
+                logger.info("PolynomialFeatures loaded from %s", poly_path)
             self.loaded = True
             logger.info(
                 "Model v%s loaded successfully (%s, %s)",
@@ -136,8 +143,13 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
                 flagged,
             )
 
+        # --- Apply polynomial feature expansion if used during training ---
+        model_input = scaled
+        if _cache.poly is not None:
+            model_input = _cache.poly.transform(scaled)
+
         # --- Prediction ---
-        probabilities = _cache.model.predict_proba(scaled)[0]  # [p_low, p_high]
+        probabilities = _cache.model.predict_proba(model_input)[0]  # [p_low, p_high]
         risk_probability = float(probabilities[1])
         overall_risk = clip_score(risk_probability * 100, 0.0, 100.0)
 
@@ -154,7 +166,41 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
         )
 
         # --- Feature contributions ---
-        importances = _cache.model.feature_importances_
+        # Handle both single models (feature_importances_) and ensembles
+        if hasattr(_cache.model, "feature_importances_"):
+            importances_full = _cache.model.feature_importances_
+        elif hasattr(_cache.model, "estimators_"):
+            # VotingClassifier — average importances from sub-models
+            imp_list = []
+            for _, est in _cache.model.estimators:
+                if hasattr(est, "feature_importances_"):
+                    imp_list.append(est.feature_importances_)
+            importances_full = np.mean(imp_list, axis=0) if imp_list else None
+        else:
+            importances_full = None
+
+        # Aggregate poly importances back to original features
+        if importances_full is not None and _cache.poly is not None:
+            # Map each poly feature back to its constituent original features
+            n_orig = NUM_FEATURES
+            importances = np.zeros(n_orig)
+            poly_powers = _cache.poly.powers_
+            for poly_idx, power_vec in enumerate(poly_powers):
+                # Distribute this poly feature's importance to its base features
+                contributing = [i for i in range(n_orig) if power_vec[i] > 0]
+                if contributing:
+                    share = importances_full[poly_idx] / len(contributing)
+                    for i in contributing:
+                        importances[i] += share
+            # Normalise so they sum to 1
+            total = importances.sum()
+            if total > 0:
+                importances = importances / total
+        elif importances_full is not None:
+            importances = importances_full
+        else:
+            importances = np.ones(NUM_FEATURES) / NUM_FEATURES
+
         feature_contribution = {
             name: round(float(imp), 4)
             for name, imp in zip(FEATURE_NAMES, importances)
