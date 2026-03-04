@@ -8,14 +8,18 @@ import NotFound from "@/pages/not-found";
 
 import Navigation from "@/components/Navigation";
 import Home from "@/pages/Home";
-import Scan from "@/pages/Scan";
-import Dashboard from "@/pages/Dashboard";
+import FaceScan from "@/pages/FaceScan";
+import VoiceScan from "@/pages/VoiceScan";
+import Processing from "@/pages/Processing";
+import Dashboard from "@/pages/DashboardNew";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={Home} />
-      <Route path="/scan" component={Scan} />
+      <Route path="/face-scan" component={FaceScan} />
+      <Route path="/voice-scan" component={VoiceScan} />
+      <Route path="/processing" component={Processing} />
       <Route path="/dashboard" component={Dashboard} />
       <Route component={NotFound} />
     </Switch>

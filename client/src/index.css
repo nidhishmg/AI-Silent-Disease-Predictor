@@ -98,6 +98,29 @@
   box-shadow: 0 10px 40px -10px rgba(26, 115, 232, 0.15), 0 4px 10px -4px rgba(26, 115, 232, 0.08);
 }
 
+/* Scanning grid overlay */
+.scanning-grid {
+  background-image:
+    linear-gradient(rgba(26, 115, 232, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(26, 115, 232, 0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+
+/* Smooth scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted-foreground) / 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted-foreground) / 0.3);
+}
+
 .scanning-grid {
   background-size: 40px 40px;
   background-image: 

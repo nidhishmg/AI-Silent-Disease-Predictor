@@ -1,5 +1,5 @@
 import { Link, useLocation } from "wouter";
-import { Activity, LayoutDashboard, ScanFace, Home } from "lucide-react";
+import { Activity, LayoutDashboard, ScanFace, Home, Mic } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { motion } from "framer-motion";
 
@@ -8,7 +8,8 @@ export default function Navigation() {
 
   const navItems = [
     { href: "/", label: "HOME", icon: Home },
-    { href: "/scan", label: "SCAN", icon: ScanFace },
+    { href: "/face-scan", label: "FACE SCAN", icon: ScanFace },
+    { href: "/voice-scan", label: "VOICE SCAN", icon: Mic },
     { href: "/dashboard", label: "DASHBOARD", icon: LayoutDashboard },
   ];
 

@@ -1,6 +1,6 @@
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import { ArrowRight, ScanFace, Mic, BrainCircuit, ActivitySquare } from "lucide-react";
+import { ArrowRight, ScanFace, Mic, BrainCircuit, ActivitySquare, ShieldCheck, Database, Lock } from "lucide-react";
 import heroGraphic from "@/assets/hero-graphic.png";
 import { Button } from "@/components/ui/button";
 
@@ -8,23 +8,29 @@ const steps = [
   {
     icon: ScanFace,
     title: "Face Scan",
-    description: "Extracting optical biomarkers and micro-expressions."
+    description: "Extracting optical biomarkers via facial landmark analysis, skin pattern detection, and micro-expression mapping."
   },
   {
     icon: Mic,
     title: "Voice Scan",
-    description: "Analyzing vocal cord variations and breathing patterns."
+    description: "Analyzing vocal cord micro-tremors, breathing rhythm, and pitch stability for vocal biomarker extraction."
   },
   {
     icon: BrainCircuit,
     title: "AI Analysis",
-    description: "Processing multi-modal data through our neural engine."
+    description: "Multi-modal feature fusion through our neural prediction engine with confidence scoring."
   },
   {
     icon: ActivitySquare,
     title: "Health Insights",
-    description: "Delivering actionable preventive healthcare metrics."
+    description: "Comprehensive risk analysis dashboard with biomarker panels, feature contribution, and AI recommendations."
   }
+];
+
+const features = [
+  { icon: ShieldCheck, title: "Privacy-First", desc: "All analysis runs locally. No data stored." },
+  { icon: Database, title: "Research-Backed", desc: "Trained on patterns from 7 biomedical datasets." },
+  { icon: Lock, title: "Secure Pipeline", desc: "End-to-end encrypted biometric processing." },
 ];
 
 export default function Home() {
@@ -40,11 +46,11 @@ export default function Home() {
         >
           <div className="inline-flex items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-sm font-medium text-primary mb-4">
             <span className="flex h-2 w-2 rounded-full bg-primary mr-2 animate-pulse"></span>
-            v2.4 Core Model Online
+            AI Preventive Health Screening
           </div>
           <h1 className="text-5xl lg:text-7xl font-bold font-display tracking-tight text-foreground leading-[1.1]">
             AI Silent Disease <br/>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary to-secondary">
+            <span className="text-transparent bg-clip-text bg-linear-to-r from-primary to-secondary">
               Predictor
             </span>
           </h1>
@@ -52,12 +58,22 @@ export default function Home() {
             AI-powered preventive healthcare using face and voice biomarker analysis. Detect subtle health changes before symptoms appear.
           </p>
           <div className="flex gap-4 pt-4">
-            <Link href="/scan">
+            <Link href="/face-scan">
               <Button size="lg" className="h-14 px-8 text-lg rounded-full premium-shadow group">
                 Start Health Scan
                 <ArrowRight className="ml-2 w-5 h-5 group-hover:translate-x-1 transition-transform" />
               </Button>
             </Link>
+          </div>
+
+          {/* Trust badges */}
+          <div className="flex gap-6 pt-2">
+            {features.map((f, i) => (
+              <div key={i} className="flex items-center gap-2 text-xs text-muted-foreground">
+                <f.icon className="w-4 h-4 text-primary/60" />
+                <span>{f.title}</span>
+              </div>
+            ))}
           </div>
         </motion.div>
 
@@ -67,7 +83,7 @@ export default function Home() {
           transition={{ duration: 0.8, delay: 0.2 }}
           className="relative flex justify-center items-center"
         >
-          <div className="absolute inset-0 bg-gradient-to-tr from-primary/20 to-transparent blur-3xl rounded-full opacity-60"></div>
+          <div className="absolute inset-0 bg-linear-to-tr from-primary/20 to-transparent blur-3xl rounded-full opacity-60"></div>
           <motion.img 
             animate={{ y: [-10, 10, -10] }}
             transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
@@ -83,7 +99,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-4">
           <div className="text-center mb-16">
             <h2 className="text-3xl font-bold mb-4">The Scanning Process</h2>
-            <p className="text-muted-foreground">Four simple steps to your comprehensive health analysis</p>
+            <p className="text-muted-foreground">Four guided steps to your comprehensive AI health analysis</p>
           </div>
 
           <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
