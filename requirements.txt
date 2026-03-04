@@ -7,6 +7,8 @@
 
 # --- Core UI ---
 streamlit>=1.30.0
+streamlit-option-menu>=0.3.6
+streamlit-lottie>=0.0.5
 
 # --- Computer Vision ---
 opencv-python-headless>=4.8.0
