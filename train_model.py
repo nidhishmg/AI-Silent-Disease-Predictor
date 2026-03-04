@@ -161,7 +161,7 @@ def train_and_save() -> None:
 
     # 2. Train / test split
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=TEST_SPLIT, random_state=TRAINING_SEED, stratify=y
+        X, y, test_size=TEST_SPLIT, random_state=TRAINING_SEED, stratify=y  # type: ignore
     )
     logger.info(
         "Split — train: %d,  test: %d", len(X_train), len(X_test)
@@ -184,7 +184,9 @@ def train_and_save() -> None:
 
     # 5. Evaluate
     y_pred = model.predict(X_test_scaled)
-    report = classification_report(y_test, y_pred, target_names=["Low Risk", "High Risk"])
+    report: str = classification_report(  # type: ignore
+        y_test, y_pred, target_names=["Low Risk", "High Risk"]
+    )
     logger.info("\nClassification Report:\n%s", report)
     print("\n" + report)
 

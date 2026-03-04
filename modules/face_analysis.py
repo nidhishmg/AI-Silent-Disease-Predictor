@@ -90,7 +90,7 @@ def _extract_face_features(image: np.ndarray) -> Dict[str, float]:
     """Run MediaPipe FaceMesh and compute biomarkers."""
     rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
-    with mp.solutions.face_mesh.FaceMesh(
+    with mp.solutions.face_mesh.FaceMesh(  # type: ignore
         static_image_mode=True,
         max_num_faces=1,
         refine_landmarks=True,

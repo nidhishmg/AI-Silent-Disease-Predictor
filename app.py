@@ -1106,7 +1106,7 @@ def _page_voice() -> None:
                 audio_data, sr = librosa.load(audio_buffer, sr=SAMPLE_RATE)
                 seed = DEMO_SEED if st.session_state.demo_mode else None
                 st.session_state.voice_data = analyze_voice(
-                    audio_data, sr, deterministic_seed=seed
+                    audio_data, int(sr), deterministic_seed=seed  # type: ignore
                 )
             except Exception as e:
                 logger.exception("Audio upload processing failed.")
