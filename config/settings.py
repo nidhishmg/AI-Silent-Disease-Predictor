@@ -32,10 +32,15 @@ SCALER_PATH = os.environ.get(
 LOG_DIR = os.path.join(BASE_DIR, "logs")
 LOG_FILE = os.path.join(LOG_DIR, "app.log")
 DATA_DIR = os.path.join(BASE_DIR, "data", "datasets")
+RAW_DIR = os.path.join(BASE_DIR, "data", "raw")
+PROCESSED_DIR = os.path.join(BASE_DIR, "data", "processed")
 
 # Dataset file paths
 HEART_CSV = os.path.join(DATA_DIR, "heart.csv")
 DIABETES_CSV = os.path.join(DATA_DIR, "diabetes.csv")
+FUSED_CSV = os.path.join(PROCESSED_DIR, "fused_dataset.csv")
+CLEANED_CSV = os.path.join(PROCESSED_DIR, "cleaned_dataset.csv")
+FEATURES_CSV = os.path.join(PROCESSED_DIR, "features.csv")
 
 # ==============================================================================
 # FEATURE SCHEMA (strict ordering — must match train_model.py)
@@ -51,7 +56,33 @@ FEATURE_NAMES = [
     "face_risk_score",
     "voice_risk_score",
 ]
+
+# Interaction features (computed from base biomarkers)
+INTERACTION_FEATURES = [
+    "cardio_stress",           # face_fatigue × breathing_score
+    "metabolic_score",         # brightness_variance × voice_stress
+    "fatigue_stress",          # face_fatigue × voice_stress
+    "respiratory_variation",   # breathing_score × pitch_instability
+]
+
+# Clinical cross-interaction features
+CLINICAL_CROSS_FEATURES = [
+    "bp_chol_risk",            # raw_bp × raw_cholesterol
+    "age_metabolic",           # raw_age × raw_glucose
+    "clinical_cardio",         # raw_bp × face_fatigue
+]
+
+# Raw rescaled clinical features (preserve original signal for training)
+RAW_CLINICAL_FEATURES = [
+    "raw_age", "raw_sex", "raw_bp", "raw_cholesterol",
+    "raw_glucose", "raw_bmi",
+    "raw_smoking", "raw_exercise",
+]
+
+# All features used by the trained model (9 base + 4 interactions + 3 cross + 8 raw = 24)
+ALL_FEATURE_NAMES = FEATURE_NAMES + INTERACTION_FEATURES + CLINICAL_CROSS_FEATURES + RAW_CLINICAL_FEATURES
 NUM_FEATURES = len(FEATURE_NAMES)
+NUM_ALL_FEATURES = len(ALL_FEATURE_NAMES)
 
 # ==============================================================================
 # RISK THRESHOLDS

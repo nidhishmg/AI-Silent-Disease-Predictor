@@ -27,14 +27,19 @@ import joblib
 import numpy as np
 
 from config.settings import (
+    ALL_FEATURE_NAMES,
+    CLINICAL_CROSS_FEATURES,
     DRIFT_Z_THRESHOLD,
     FEATURE_NAMES,
+    INTERACTION_FEATURES,
     LOW_THRESHOLD,
     MODEL_DIR,
     MODEL_PATH,
     MODEL_VERSION,
     MODERATE_THRESHOLD,
+    NUM_ALL_FEATURES,
     NUM_FEATURES,
+    RAW_CLINICAL_FEATURES,
     SCALER_PATH,
 )
 from utils.feature_utils import compute_entropy
@@ -54,8 +59,8 @@ class _ModelCache:
     def __init__(self) -> None:
         self.model: Any = None
         self.scaler: Any = None
-        self.poly: Any = None  # PolynomialFeatures transformer (optional)
         self.loaded: bool = False
+        self.uses_interactions: bool = False  # True if model expects 13 features
 
     def load(self) -> bool:
         """Attempt to load model and scaler from disk.  Returns success flag."""
@@ -70,11 +75,13 @@ class _ModelCache:
         try:
             self.model = joblib.load(MODEL_PATH)
             self.scaler = joblib.load(SCALER_PATH)
-            # Optional poly transformer (for polynomial feature models)
-            poly_path = os.path.join(MODEL_DIR, "poly.pkl")
-            if os.path.isfile(poly_path):
-                self.poly = joblib.load(poly_path)
-                logger.info("PolynomialFeatures loaded from %s", poly_path)
+            # Detect whether model expects 13 features (with interactions)
+            n_expected = _detect_n_features(self.model)
+            self.uses_interactions = (n_expected == NUM_ALL_FEATURES)
+            logger.info(
+                "Model expects %d features (interactions=%s)",
+                n_expected, self.uses_interactions,
+            )
             self.loaded = True
             logger.info(
                 "Model v%s loaded successfully (%s, %s)",
@@ -89,6 +96,93 @@ class _ModelCache:
 
 
 _cache = _ModelCache()
+
+
+# ==============================================================================
+# Interaction feature computation
+# ==============================================================================
+
+def _compute_interactions(features: Dict[str, float]) -> Dict[str, float]:
+    """Compute 4 interaction features from 9 base biomarkers.
+
+    Must match the formulas used in ``training/feature_engineering.py``.
+    """
+    return {
+        "cardio_stress": features["face_fatigue"] * features["breathing_score"],
+        "metabolic_score": features["brightness_variance"] * features["voice_stress"],
+        "fatigue_stress": features["face_fatigue"] * features["voice_stress"],
+        "respiratory_variation": features["breathing_score"] * features["pitch_instability"],
+    }
+
+
+def _estimate_raw_clinical(features: Dict[str, float]) -> Dict[str, float]:
+    """Estimate raw clinical features from biomarker values for inference.
+
+    During training the model sees rescaled raw clinical features alongside
+    biomarkers.  At inference time (face/voice analysis) these raw values
+    are not available, so we estimate them from the biomarker values using
+    the dominant contribution weights defined in feature_engineering.py.
+
+    The estimates are approximate but provide the model with a reasonable
+    signal in the same feature space it was trained on.
+    """
+    ff = features.get("face_fatigue", 0.5)
+    ss = features.get("symmetry_score", 0.5)
+    bi = features.get("blink_instability", 0.5)
+    bv = features.get("brightness_variance", 0.5)
+    vs = features.get("voice_stress", 0.5)
+    bs = features.get("breathing_score", 0.5)
+    pi = features.get("pitch_instability", 0.5)
+    frs = features.get("face_risk_score", 50.0) / 100.0
+    vrs = features.get("voice_risk_score", 50.0) / 100.0
+
+    # Approximate inverse: each raw feature is estimated from the
+    # biomarker(s) where it has the strongest weight contribution.
+    raw_bp       = 0.40 * ff + 0.30 * (1 - ss) + 0.15 * bs + 0.15 * bi
+    raw_age      = 0.30 * bs + 0.25 * ff + 0.25 * pi + 0.20 * (1 - ss)
+    raw_chol     = 0.40 * (1 - ss) + 0.30 * pi + 0.30 * bv
+    raw_gluc     = 0.30 * bi + 0.25 * vs + 0.25 * pi + 0.20 * bv
+    raw_bmi      = 0.35 * bv + 0.30 * vs + 0.20 * bs + 0.15 * bi
+    raw_smoke    = frs * 0.5 + vrs * 0.5      # rough proxy
+    raw_exercise = 1.0 - (0.5 * bi + 0.3 * pi + 0.2 * (1 - ss))
+    raw_sex      = 0.5  # no reliable inference from biomarkers
+
+    return {
+        "raw_age": float(np.clip(raw_age, 0, 1)),
+        "raw_sex": float(np.clip(raw_sex, 0, 1)),
+        "raw_bp": float(np.clip(raw_bp, 0, 1)),
+        "raw_cholesterol": float(np.clip(raw_chol, 0, 1)),
+        "raw_glucose": float(np.clip(raw_gluc, 0, 1)),
+        "raw_bmi": float(np.clip(raw_bmi, 0, 1)),
+        "raw_smoking": float(np.clip(raw_smoke, 0, 1)),
+        "raw_exercise": float(np.clip(raw_exercise, 0, 1)),
+    }
+
+
+def _compute_clinical_cross(features: Dict[str, float],
+                            raw: Dict[str, float]) -> Dict[str, float]:
+    """Compute 3 clinical cross-interaction features.
+
+    Must match the formulas used in ``training/feature_engineering.py``.
+    """
+    return {
+        "bp_chol_risk": raw["raw_bp"] * raw["raw_cholesterol"],
+        "age_metabolic": raw["raw_age"] * raw["raw_glucose"],
+        "clinical_cardio": raw["raw_bp"] * features["face_fatigue"],
+    }
+
+
+def _detect_n_features(model: Any) -> int:
+    """Detect the number of features the model was trained on."""
+    if hasattr(model, "n_features_in_"):
+        return int(model.n_features_in_)
+    if hasattr(model, "feature_importances_"):
+        return len(model.feature_importances_)
+    if hasattr(model, "estimators_"):
+        for _, est in model.estimators:
+            if hasattr(est, "n_features_in_"):
+                return int(est.n_features_in_)
+    return NUM_FEATURES  # fallback
 
 
 # ==============================================================================
@@ -124,32 +218,58 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
         return _fallback_result("Model not loaded — run train_model.py first")
 
     try:
-        # Build ordered feature vector
+        # Build ordered feature vector (9 base biomarkers)
         feature_vector = np.array(
             [features[name] for name in FEATURE_NAMES], dtype=np.float64
         ).reshape(1, -1)
 
-        # --- Feature drift detection ---
-        scaled = _cache.scaler.transform(feature_vector)
-        drift_warning = bool(np.any(np.abs(scaled) > DRIFT_Z_THRESHOLD))
+        # --- Compute interaction features if model requires them ---
+        if _cache.uses_interactions:
+            interactions = _compute_interactions(features)
+            interaction_vec = np.array(
+                [interactions[name] for name in INTERACTION_FEATURES],
+                dtype=np.float64,
+            ).reshape(1, -1)
+
+            # Estimate raw clinical features from biomarkers
+            raw_clinical = _estimate_raw_clinical(features)
+
+            # Compute clinical cross-interaction features
+            clinical_cross = _compute_clinical_cross(features, raw_clinical)
+            cross_vec = np.array(
+                [clinical_cross[name] for name in CLINICAL_CROSS_FEATURES],
+                dtype=np.float64,
+            ).reshape(1, -1)
+
+            raw_vec = np.array(
+                [raw_clinical[name] for name in RAW_CLINICAL_FEATURES],
+                dtype=np.float64,
+            ).reshape(1, -1)
+
+            full_vector = np.hstack([feature_vector, interaction_vec, cross_vec, raw_vec])
+            all_names = ALL_FEATURE_NAMES
+            n_feats = NUM_ALL_FEATURES
+        else:
+            full_vector = feature_vector
+            all_names = FEATURE_NAMES
+            n_feats = NUM_FEATURES
+
+        # --- Feature drift detection (on base features only) ---
+        scaled_base = _cache.scaler.transform(feature_vector)
+        drift_warning = bool(np.any(np.abs(scaled_base) > DRIFT_Z_THRESHOLD))
         if drift_warning:
             flagged = [
                 FEATURE_NAMES[i]
                 for i in range(NUM_FEATURES)
-                if abs(scaled[0, i]) > DRIFT_Z_THRESHOLD
+                if abs(scaled_base[0, i]) > DRIFT_Z_THRESHOLD
             ]
             logger.warning(
                 "Feature drift detected — out-of-distribution features: %s",
                 flagged,
             )
 
-        # --- Apply polynomial feature expansion if used during training ---
-        model_input = scaled
-        if _cache.poly is not None:
-            model_input = _cache.poly.transform(scaled)
-
         # --- Prediction ---
-        probabilities = _cache.model.predict_proba(model_input)[0]  # [p_low, p_high]
+        probabilities = _cache.model.predict_proba(full_vector)[0]  # [p_low, p_high]
         risk_probability = float(probabilities[1])
         overall_risk = clip_score(risk_probability * 100, 0.0, 100.0)
 
@@ -168,36 +288,32 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
         # --- Feature contributions ---
         # Handle both single models (feature_importances_) and ensembles
         if hasattr(_cache.model, "feature_importances_"):
-            importances_full = _cache.model.feature_importances_
+            importances = _cache.model.feature_importances_
         elif hasattr(_cache.model, "estimators_"):
             # VotingClassifier — average importances from sub-models
             imp_list = []
             for _, est in _cache.model.estimators:
                 if hasattr(est, "feature_importances_"):
                     imp_list.append(est.feature_importances_)
-            importances_full = np.mean(imp_list, axis=0) if imp_list else None
+            importances = np.mean(imp_list, axis=0) if imp_list else None
         else:
-            importances_full = None
+            importances = None
 
-        # Aggregate poly importances back to original features
-        if importances_full is not None and _cache.poly is not None:
-            # Map each poly feature back to its constituent original features
-            n_orig = NUM_FEATURES
-            importances = np.zeros(n_orig)
-            poly_powers = _cache.poly.powers_
-            for poly_idx, power_vec in enumerate(poly_powers):
-                # Distribute this poly feature's importance to its base features
-                contributing = [i for i in range(n_orig) if power_vec[i] > 0]
-                if contributing:
-                    share = importances_full[poly_idx] / len(contributing)
-                    for i in contributing:
-                        importances[i] += share
-            # Normalise so they sum to 1
+        # Map back to base features (aggregate interaction importances)
+        if importances is not None and len(importances) > NUM_FEATURES:
+            base_imp = importances[:NUM_FEATURES].copy()
+            interaction_imp = importances[NUM_FEATURES:]
+            total_interaction = float(interaction_imp.sum())
+            if total_interaction > 0:
+                base_imp += total_interaction / NUM_FEATURES
+            total = base_imp.sum()
+            if total > 0:
+                base_imp = base_imp / total
+            importances = base_imp
+        elif importances is not None:
             total = importances.sum()
             if total > 0:
                 importances = importances / total
-        elif importances_full is not None:
-            importances = importances_full
         else:
             importances = np.ones(NUM_FEATURES) / NUM_FEATURES
 
@@ -227,10 +343,9 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
 # ==============================================================================
 
 def explain_prediction(features: Dict[str, float]) -> Dict[str, Any]:
-    """Placeholder for SHAP-based model explainability.
+    """SHAP-based model explainability.
 
-    When fully implemented this will return per-feature SHAP values
-    explaining the model's decision for a specific input.
+    Uses TreeExplainer if ``shap`` is installed, otherwise returns zeros.
 
     Parameters
     ----------
@@ -244,18 +359,69 @@ def explain_prediction(features: Dict[str, float]) -> Dict[str, Any]:
         ``base_value``: expected model output.
         ``explanation_ready``: bool.
     """
-    logger.info("SHAP explainability called — returning placeholder.")
+    if not _cache.load():
+        return {
+            "shap_values": {name: 0.0 for name in FEATURE_NAMES},
+            "base_value": 0.5,
+            "explanation_ready": False,
+            "note": "Model not loaded.",
+        }
 
-    # Future: import shap, build TreeExplainer, compute SHAP values
-    # explainer = shap.TreeExplainer(_cache.model)
-    # shap_values = explainer.shap_values(scaled_features)
+    try:
+        import shap
 
-    return {
-        "shap_values": {name: 0.0 for name in FEATURE_NAMES},
-        "base_value": 0.5,
-        "explanation_ready": False,
-        "note": "SHAP integration module ready — awaiting shap package installation.",
-    }
+        feature_vector = np.array(
+            [features[name] for name in FEATURE_NAMES], dtype=np.float64,
+        ).reshape(1, -1)
+
+        if _cache.uses_interactions:
+            interactions = _compute_interactions(features)
+            int_vec = np.array(
+                [interactions[n] for n in INTERACTION_FEATURES], dtype=np.float64,
+            ).reshape(1, -1)
+            full_vec = np.hstack([feature_vector, int_vec])
+        else:
+            full_vec = feature_vector
+
+        # For VotingClassifier, use first estimator
+        from sklearn.ensemble import VotingClassifier
+        model_for_shap = _cache.model
+        if isinstance(_cache.model, VotingClassifier):
+            model_for_shap = _cache.model.estimators_[0]
+
+        explainer = shap.TreeExplainer(model_for_shap)
+        sv = explainer.shap_values(full_vec)
+        if isinstance(sv, list):
+            sv = sv[1]  # positive class
+
+        shap_dict = {}
+        names = ALL_FEATURE_NAMES if _cache.uses_interactions else FEATURE_NAMES
+        for i, name in enumerate(names):
+            shap_dict[name] = float(sv[0][i])
+
+        return {
+            "shap_values": shap_dict,
+            "base_value": float(explainer.expected_value[1])
+            if isinstance(explainer.expected_value, (list, np.ndarray))
+            else float(explainer.expected_value),
+            "explanation_ready": True,
+        }
+    except ImportError:
+        logger.info("shap package not installed — returning placeholder.")
+        return {
+            "shap_values": {name: 0.0 for name in FEATURE_NAMES},
+            "base_value": 0.5,
+            "explanation_ready": False,
+            "note": "Install shap package: pip install shap",
+        }
+    except Exception:
+        logger.exception("SHAP explanation failed.")
+        return {
+            "shap_values": {name: 0.0 for name in FEATURE_NAMES},
+            "base_value": 0.5,
+            "explanation_ready": False,
+            "note": "SHAP computation failed — see logs.",
+        }
 
 
 # ==============================================================================
