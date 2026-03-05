@@ -193,7 +193,7 @@ def _download_kaggle(slug: str, kaggle_file: str, dest: Path) -> bool:
 # Synthetic dataset generators (faithful to published distributions)
 # ======================================================================
 
-def _generate_framingham(dest: Path, n: int = 4238, seed: int = 42) -> None:
+def _generate_framingham(dest: Path, n: int = 30000, seed: int = 42) -> None:
     """Generate Framingham-like data from published study statistics.
 
     Variable distributions sourced from:
@@ -209,19 +209,42 @@ def _generate_framingham(dest: Path, n: int = 4238, seed: int = 42) -> None:
     cigs_per_day = np.where(
         current_smoker, rng.poisson(9, n).clip(0, 70), 0
     ).astype(float)
+    
+    # --- Inter-feature Correlations ---
+    # BMI increases with age, modified by sex
+    bmi_base = rng.normal(25.8, 4.1, n)
+    bmi = (bmi_base + 0.05 * (age - 30) - 1.2 * male).clip(15.5, 56.8).round(2)
+    
+    # Blood pressure increases strongly with BMI and age
+    sys_bp_base = rng.normal(132.4, 15.0, n)
+    sys_bp = (sys_bp_base + 0.8 * (bmi - 25) + 0.5 * (age - 40)).clip(83, 295).round(1)
+    
+    dia_bp_base = rng.normal(82.9, 10.0, n)
+    dia_bp = (dia_bp_base + 0.5 * (bmi - 25) + 0.3 * (age - 40)).clip(48, 143).round(1)
+    
+    # Glucose increases with BMI and age
+    glucose_base = rng.normal(81.9, 15.0, n)
+    glucose = (glucose_base + 1.5 * (bmi - 25) + 0.2 * age).clip(40, 394).round().astype(int)
+    
+    # Cholesterol increases with BMI, age, and smoking
+    tot_chol_base = rng.normal(236.7, 30.0, n)
+    tot_chol = (tot_chol_base + 2.0 * (bmi - 25) + 1.0 * age + 10.0 * current_smoker).clip(107, 696).round(1)
+    
+    # Heart rate increases with smoking and BMI
+    hr_base = rng.normal(75.9, 10.0, n)
+    heart_rate = (hr_base + 3.0 * current_smoker + 0.3 * (bmi - 25)).clip(44, 143).round().astype(int)
+
     bp_meds = rng.binomial(1, 0.03, n)
     prevalent_stroke = rng.binomial(1, 0.006, n)
-    prevalent_hyp = rng.binomial(1, 0.31, n)
-    diabetes = rng.binomial(1, 0.026, n)
-    tot_chol = rng.normal(236.7, 44.6, n).clip(107, 696).round(1)
-    sys_bp = rng.normal(132.4, 22.0, n).clip(83, 295).round(1)
-    dia_bp = rng.normal(82.9, 12.0, n).clip(48, 143).round(1)
-    bmi = rng.normal(25.8, 4.1, n).clip(15.5, 56.8).round(2)
-    heart_rate = rng.normal(75.9, 12.1, n).clip(44, 143).round().astype(int)
-    glucose = rng.normal(81.9, 23.9, n).clip(40, 394).round().astype(int)
+    
+    # Hypertension clearly linked to high BP
+    prevalent_hyp = (sys_bp > 140).astype(int)
+    
+    # Diabetes linked to high glucose
+    diabetes = (glucose > 125).astype(int)
 
     # 10-year CHD ~ 15.2 %  (logistic function of risk factors)
-    logit = (
+    logit = 3.0 * (
         -9.0
         + 0.04 * age
         + 0.8 * male
@@ -231,8 +254,7 @@ def _generate_framingham(dest: Path, n: int = 4238, seed: int = 42) -> None:
         + 0.5 * current_smoker
         + 0.6 * diabetes
         + 0.04 * bmi
-        + rng.normal(0, 0.10, n)
-    )
+    ) + rng.normal(0, 0.10, n)
     prob = 1.0 / (1.0 + np.exp(-logit))
     ten_year_chd = (rng.random(n) < prob).astype(int)
 
@@ -249,7 +271,7 @@ def _generate_framingham(dest: Path, n: int = 4238, seed: int = 42) -> None:
     print(f"    ✓ Saved {len(df)} rows  (CHD+ {ten_year_chd.mean():.1%})")
 
 
-def _generate_stroke(dest: Path, n: int = 5110, seed: int = 43) -> None:
+def _generate_stroke(dest: Path, n: int = 30000, seed: int = 43) -> None:
     """Generate Stroke Prediction-like data.
 
     Based on variable distributions from the Kaggle dataset description
@@ -261,36 +283,57 @@ def _generate_stroke(dest: Path, n: int = 5110, seed: int = 43) -> None:
     idx = np.arange(1, n + 1)
     gender = rng.choice(["Male", "Female", "Other"], n, p=[0.41, 0.585, 0.005])
     age = np.abs(rng.normal(43, 22.5, n)).clip(0.1, 82).round(1)
-    hypertension = rng.binomial(1, 0.097, n)
-    heart_disease = rng.binomial(1, 0.054, n)
+    
+    # --- Inter-feature Correlations ---
+    # BMI increases with age
+    bmi_base = rng.normal(28.9, 7.9, n)
+    bmi = (bmi_base + 0.1 * (age - 30)).clip(10.3, 97.6).round(1)
+    
+    # Smoking is correlated with age
+    smoking_base_prob = np.where(age > 18, 0.35, 0.05)
+    smoking_prob = smoking_base_prob + rng.normal(0, 0.1, n)
+    is_smoker = (smoking_prob > 0.4).astype(int)
+    smoking = np.where(
+        is_smoker,
+        rng.choice(["smokes", "formerly smoked"], n, p=[0.6, 0.4]),
+        rng.choice(["never smoked", "Unknown"], n, p=[0.8, 0.2])
+    )
+    
+    # Glucose rises with age and BMI
+    glucose_base = rng.normal(92, 20, n)
+    avg_glucose = (glucose_base + 1.2 * (bmi - 25) + 0.5 * (age - 40)).clip(55, 272).round(2)
+    # Simulate diabetic spikes
+    spike_mask = rng.random(n) < (0.1 + 0.01 * (age - 40) + 0.005 * (bmi - 25))
+    avg_glucose[spike_mask] = rng.normal(180, 50, spike_mask.sum()).clip(140, 272)
+    
+    # Hypertension heavily linked to age, BMI, and smoking
+    hyp_prob = 0.05 + 0.01 * (age - 40) + 0.02 * (bmi - 25) + 0.1 * is_smoker
+    hypertension = (rng.random(n) < hyp_prob).astype(int)
+    
+    # Heart disease linked to age, BMI, smoking, and hypertension
+    hd_prob = 0.02 + 0.01 * (age - 50) + 0.01 * (bmi - 28) + 0.05 * is_smoker + 0.1 * hypertension
+    heart_disease = (rng.random(n) < hd_prob).astype(int)
+    
     ever_married = np.where(age > 20, rng.choice(["Yes", "No"], n, p=[0.66, 0.34]), "No")
     work_type = rng.choice(
         ["Private", "Self-employed", "Govt_job", "children", "Never_worked"],
         n, p=[0.57, 0.16, 0.13, 0.13, 0.01],
     )
     residence = rng.choice(["Urban", "Rural"], n, p=[0.51, 0.49])
-    avg_glucose = np.where(
-        rng.random(n) < 0.28,
-        rng.normal(180, 50, n),
-        rng.normal(92, 20, n),
-    ).clip(55, 272).round(2)
-    bmi = rng.normal(28.9, 7.9, n).clip(10.3, 97.6).round(1)
+
     # Handle missing BMI (≈3.9 %)
     bmi_str = bmi.astype(str)
     bmi_str[rng.random(n) < 0.039] = "N/A"
-    smoking = rng.choice(
-        ["formerly smoked", "never smoked", "smokes", "Unknown"],
-        n, p=[0.17, 0.37, 0.16, 0.30],
-    )
+    
     # Stroke ~ 4.87 %
-    logit = (
+    logit = 3.0 * (
         -8.0
         + 0.05 * age
         + 1.2 * hypertension
         + 1.0 * heart_disease
         + 0.01 * avg_glucose
-        + rng.normal(0, 0.05, n)
-    )
+        + 0.05 * (bmi - 25)
+    ) + rng.normal(0, 0.05, n)
     prob = 1.0 / (1.0 + np.exp(-logit))
     stroke = (rng.random(n) < prob).astype(int)
 
@@ -305,42 +348,70 @@ def _generate_stroke(dest: Path, n: int = 5110, seed: int = 43) -> None:
     print(f"    ✓ Saved {len(df)} rows  (stroke+ {stroke.mean():.1%})")
 
 
-def _generate_cardiovascular(dest: Path, n: int = 70000, seed: int = 44) -> None:
+def _generate_cardiovascular(dest: Path, n: int = 100000, seed: int = 44) -> None:
     """Generate Cardiovascular Disease-like data.
 
     Based on variable distributions described in the Kaggle dataset page
     and WHO cardiovascular health statistics.
     """
-    print("    ⚙ Generating synthetic Cardiovascular Disease data (70 000 rows)")
+    print(f"    ⚙ Generating synthetic Cardiovascular Disease data ({n} rows)")
     rng = np.random.default_rng(seed)
 
     idx = np.arange(n)
     # age in days (≈35–65 years)
     age_days = rng.normal(19_468, 2_467, n).clip(10_798, 23_713).round().astype(int)
+    age_years = age_days / 365.25
     gender = rng.choice([1, 2], n, p=[0.35, 0.65])  # 1=F, 2=M
     height = np.where(
         gender == 1,
         rng.normal(161, 6.5, n),
         rng.normal(170, 7.5, n),
     ).clip(130, 210).round().astype(int)
-    weight = np.where(
-        gender == 1,
-        rng.normal(70.5, 14.0, n),
-        rng.normal(78.0, 15.0, n),
-    ).clip(35, 200).round(1)
-    ap_hi = rng.normal(128, 16.5, n).clip(80, 240).round().astype(int)
-    ap_lo = rng.normal(82, 9.5, n).clip(50, 160).round().astype(int)
+    
+    # --- Inter-feature Correlations ---
+    # Weight increases with age, varies by gender
+    weight_base = np.where(gender == 1, rng.normal(70.5, 12.0, n), rng.normal(78.0, 13.0, n))
+    weight = (weight_base + 0.2 * (age_years - 40)).clip(35, 200).round(1)
+    
+    bmi = weight / ((height / 100) ** 2)
+    
+    # Blood pressure increases with age and BMI
+    ap_hi_base = rng.normal(120, 12.0, n)
+    ap_hi = (ap_hi_base + 0.5 * (age_years - 40) + 1.2 * (bmi - 25)).clip(80, 240).round().astype(int)
+    
+    ap_lo_base = rng.normal(80, 8.0, n)
+    ap_lo = (ap_lo_base + 0.3 * (age_years - 40) + 0.8 * (bmi - 25)).clip(50, 160).round().astype(int)
     # Ensure diastolic < systolic
     ap_lo = np.minimum(ap_lo, ap_hi - 5)
-    cholesterol = rng.choice([1, 2, 3], n, p=[0.52, 0.28, 0.20])
-    gluc = rng.choice([1, 2, 3], n, p=[0.61, 0.18, 0.21])
-    smoke = rng.binomial(1, 0.088, n)
-    alco = rng.binomial(1, 0.054, n)
-    active = rng.binomial(1, 0.804, n)
+    
+    # Cholesterol linked to age and BMI
+    chol_prob = 0.2 + 0.01 * (age_years - 40) + 0.02 * (bmi - 25)
+    chol_rand = rng.random(n)
+    cholesterol = np.ones(n, dtype=int)
+    cholesterol[chol_rand < chol_prob] = 2
+    cholesterol[chol_rand < chol_prob / 2] = 3
+    
+    # Glucose linked to age, BMI, and cholesterol
+    gluc_prob = 0.15 + 0.01 * (age_years - 40) + 0.03 * (bmi - 25) + 0.05 * (cholesterol > 1)
+    gluc_rand = rng.random(n)
+    gluc = np.ones(n, dtype=int)
+    gluc[gluc_rand < gluc_prob] = 2
+    gluc[gluc_rand < gluc_prob / 2] = 3
+
+    # Smoking is correlated with gender
+    smoke_prob = np.where(gender == 2, 0.15, 0.04) + rng.normal(0, 0.02, n)
+    smoke = (smoke_prob > 0.1).astype(int)
+    
+    # Alcohol linked to smoking
+    alco_prob = 0.03 + 0.1 * smoke + rng.normal(0, 0.02, n)
+    alco = (alco_prob > 0.1).astype(int)
+    
+    # Activity inversely linked to age and BMI
+    active_prob = 0.9 - 0.005 * (age_years - 40) - 0.01 * (bmi - 25)
+    active = (rng.random(n) < active_prob).astype(int)
 
     # Target: cardio ~ 49.9% (balanced in original)
-    age_years = age_days / 365.25
-    logit = (
+    logit = 4.0 * (
         -16.5
         + 0.12 * age_years
         + 0.05 * ap_hi
@@ -350,8 +421,7 @@ def _generate_cardiovascular(dest: Path, n: int = 70000, seed: int = 44) -> None
         + 0.6 * smoke
         - 0.8 * active
         + 0.025 * weight
-        + rng.normal(0, 0.05, n)
-    )
+    ) + rng.normal(0, 0.05, n)
     prob = 1.0 / (1.0 + np.exp(-logit))
     cardio = (rng.random(n) < prob).astype(int)
 

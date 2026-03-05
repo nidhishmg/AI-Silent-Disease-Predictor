@@ -181,6 +181,15 @@ def generate_biomarkers(df: pd.DataFrame) -> pd.DataFrame:
     fatigue_stress = face_fatigue * voice_stress
     respiratory_variation = breathing_score * pitch_instability
 
+    # ── ADVANCED Feature Interaction Generator (Phase 12) ──────────
+    stress_fatigue = voice_stress * face_fatigue
+    respiratory_load = breathing_score * pitch_instability
+    eye_fatigue_index = blink_instability * face_fatigue
+    symmetry_fatigue_gap = face_fatigue - symmetry_score
+    combined_risk = (face_risk_score + voice_risk_score) / 2
+    fatigue_pitch_interaction = face_fatigue * pitch_instability
+    breathing_stress_ratio = voice_stress / (breathing_score + 0.001)
+
     # ── Clinical cross-interaction features ─────────────────────
     bp_chol_risk   = bp * chol          # blood pressure × cholesterol
     age_metabolic  = age * gluc         # age-modified metabolic risk
@@ -197,15 +206,27 @@ def generate_biomarkers(df: pd.DataFrame) -> pd.DataFrame:
         "pitch_instability": pitch_instability,
         "face_risk_score": face_risk_score,
         "voice_risk_score": voice_risk_score,
+        
         # 4 biomarker interaction features
         "cardio_stress": cardio_stress_bio,
         "metabolic_score": metabolic_score_bio,
         "fatigue_stress": fatigue_stress,
         "respiratory_variation": respiratory_variation,
+        
+        # 7 ADVANCED interaction features (Phase 12)
+        "stress_fatigue": stress_fatigue,
+        "respiratory_load": respiratory_load,
+        "eye_fatigue_index": eye_fatigue_index,
+        "symmetry_fatigue_gap": symmetry_fatigue_gap,
+        "combined_risk": combined_risk,
+        "fatigue_pitch_interaction": fatigue_pitch_interaction,
+        "breathing_stress_ratio": breathing_stress_ratio,
+
         # 3 clinical cross-interaction features
         "bp_chol_risk": bp_chol_risk,
         "age_metabolic": age_metabolic,
         "clinical_cardio": clinical_cardio,
+        
         # 8 rescaled raw clinical features (no raw_heart_rate — zero variance)
         "raw_age": age,
         "raw_sex": sex,

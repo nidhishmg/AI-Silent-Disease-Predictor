@@ -65,6 +65,17 @@ INTERACTION_FEATURES = [
     "respiratory_variation",   # breathing_score × pitch_instability
 ]
 
+# Advanced Interaction features (Phase 12)
+ADVANCED_INTERACTION_FEATURES = [
+    "stress_fatigue",
+    "respiratory_load",
+    "eye_fatigue_index",
+    "symmetry_fatigue_gap",
+    "combined_risk",
+    "fatigue_pitch_interaction",
+    "breathing_stress_ratio",
+]
+
 # Clinical cross-interaction features
 CLINICAL_CROSS_FEATURES = [
     "bp_chol_risk",            # raw_bp × raw_cholesterol
@@ -79,8 +90,8 @@ RAW_CLINICAL_FEATURES = [
     "raw_smoking", "raw_exercise",
 ]
 
-# All features used by the trained model (9 base + 4 interactions + 3 cross + 8 raw = 24)
-ALL_FEATURE_NAMES = FEATURE_NAMES + INTERACTION_FEATURES + CLINICAL_CROSS_FEATURES + RAW_CLINICAL_FEATURES
+# All features used by the trained model (9 base + 4 interactions + 7 advanced + 3 cross + 8 raw = 31)
+ALL_FEATURE_NAMES = FEATURE_NAMES + INTERACTION_FEATURES + ADVANCED_INTERACTION_FEATURES + CLINICAL_CROSS_FEATURES + RAW_CLINICAL_FEATURES
 NUM_FEATURES = len(FEATURE_NAMES)
 NUM_ALL_FEATURES = len(ALL_FEATURE_NAMES)
 

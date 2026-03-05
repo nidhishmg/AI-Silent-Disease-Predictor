@@ -317,20 +317,33 @@ def predict_health_risk(features: Dict[str, float]) -> Dict[str, Any]:
         else:
             importances = np.ones(NUM_FEATURES) / NUM_FEATURES
 
+        # --- Health Confidence Index (HCI) ---
+        # Confidence penalized by risk: if risk is high, confidence in that risk is important
+        # HCI = Confidence Score weighted by clarity of the signal
+        hci = clip_score(confidence_score * (1.0 - (overall_risk / 200.0)), 0.0, 100.0)
+
         feature_contribution = {
             name: round(float(imp), 4)
             for name, imp in zip(FEATURE_NAMES, importances)
         }
 
+        # --- Dominant Biomarkers ---
+        sorted_feats = sorted(feature_contribution.items(), key=lambda x: x[1], reverse=True)
+        primary_indicator = sorted_feats[0][0] if len(sorted_feats) > 0 else "Unknown"
+        secondary_indicator = sorted_feats[1][0] if len(sorted_feats) > 1 else "Unknown"
+
         result: Dict[str, Any] = {
             "overall_risk": round(overall_risk, 2),
             "risk_level": risk_level,
             "confidence_score": round(confidence_score, 2),
+            "hci": round(hci, 2),
             "feature_contribution": feature_contribution,
+            "primary_indicator": primary_indicator,
+            "secondary_indicator": secondary_indicator,
             "model_version": MODEL_VERSION,
             "drift_warning": drift_warning,
         }
-        logger.info("Prediction complete: risk=%.2f%% (%s)", overall_risk, risk_level)
+        logger.info("Prediction complete: risk=%.2f%% (%s), HCI=%.2f", overall_risk, risk_level, hci)
         return result
 
     except Exception:
@@ -469,7 +482,10 @@ def _fallback_result(reason: str) -> Dict[str, Any]:
         "overall_risk": 0.0,
         "risk_level": "Unknown",
         "confidence_score": 0.0,
+        "hci": 0.0,
         "feature_contribution": {name: 0.0 for name in FEATURE_NAMES},
+        "primary_indicator": "Unknown",
+        "secondary_indicator": "Unknown",
         "model_version": MODEL_VERSION,
         "drift_warning": False,
         "error": reason,
